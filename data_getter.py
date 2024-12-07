@@ -9,8 +9,8 @@ from datetime import datetime
 import io
 from database import PropertyDatabase
 import matplotlib.pyplot as plt
-import geopandas as gpd
-from shapely.geometry import Point
+from matplotlib.patches import Polygon
+from matplotlib.collections import PatchCollection
 
 # Type definitions
 class PropertyResult(TypedDict):
@@ -225,25 +225,38 @@ def create_uk_plot(latitude: float, longitude: float) -> bytes:
     """Create a UK map plot with the property location marked"""
     import matplotlib
     matplotlib.use('Agg')  # Set backend before importing pyplot
-    import matplotlib.pyplot as plt
     
-    url = "https://raw.githubusercontent.com/martinjc/UK-GeoJSON/master/json/administrative/gb/topo_lad.json"
-    uk = gpd.read_file(url)
-    
-    point = gpd.GeoDataFrame(
-        geometry=[Point(longitude, latitude)],
-        crs="EPSG:4326"
-    )
+    # Load the pre-generated UK polygons
+    try:
+        with open('uk_polygons.json', 'r') as f:
+            uk_data = json.load(f)
+    except FileNotFoundError:
+        print("UK polygons file not found. Please run generate_uk_polygons.py first.")
+        return None
     
     fig, ax = plt.subplots(figsize=(10, 12))
-    uk.plot(ax=ax, color='lightgray', edgecolor='black')
-    point.plot(ax=ax, color='red', marker='o', markersize=100)
     
-    ax.set_xlim([-8, 2])
-    ax.set_ylim([50, 59])
+    # Create polygon patches
+    patches = []
+    for polygon_coords in uk_data['polygons']:
+        patches.append(Polygon(polygon_coords, closed=True))
+    
+    # Add polygons to plot
+    collection = PatchCollection(patches, facecolor='lightgray', edgecolor='black', linewidth=0.5)
+    ax.add_collection(collection)
+    
+    # Plot the property location
+    ax.plot(longitude, latitude, 'ro', markersize=10)
+    
+    # Set the plot bounds
+    ax.set_xlim(uk_data['bounds']['x'])
+    ax.set_ylim(uk_data['bounds']['y'])
+    
     plt.title('Position on UK Map')
     plt.axis('off')
     fig.tight_layout()
+    
+    # Save to buffer
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
     plt.close(fig)

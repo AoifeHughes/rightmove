@@ -3,9 +3,13 @@ from pathlib import Path
 import json
 import io
 import matplotlib.pyplot as plt
+import os
 
 class PropertyDatabase:
-    def __init__(self, db_path="properties.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            documents_dir = os.path.expanduser('~/Documents')
+            db_path = os.path.join(documents_dir, 'properties.db')
         self.db_path = db_path
         self.init_db()
 
@@ -45,7 +49,7 @@ class PropertyDatabase:
                 'INSERT OR REPLACE INTO properties (id, data) VALUES (?, ?)',
                 (property_data['id'], json.dumps(property_data))
             )
-            
+            print("Inserted property:", property_data['id'])
             # Store images
             for idx, image_data in enumerate(images):
                 cursor.execute(

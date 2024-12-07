@@ -4,3 +4,11 @@
 /scrape.ipynb
 /temp_map.png
 *.buildozer
+*build/
+*.cache/
+*.dist/
+dist/
+*.egg-info/
+*.egg-info
+*.spec
+*.log
