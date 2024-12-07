@@ -334,6 +334,7 @@ class PropertyGame(Screen):
             [f"[b]Size:[/b] {next((f'{s['max']} {s['unit']}' for s in self.current_property['sizings'] if s['unit'] == 'sqm'), 'Not specified')}"],
             [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property['features']]
         ]
+        
         return info_stages
     
     def update_info_panel(self):
