@@ -9,13 +9,11 @@ from kivy.clock import Clock
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.screenmanager import ScreenManager, Screen
-from kivy.support import install_twisted_reactor
-install_twisted_reactor()
-from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks, DeferredList
 import json
 import random
 from pathlib import Path
+import asyncio
+from functools import partial
 from main import generate_random_properties
 from database import PropertyDatabase
 
@@ -111,35 +109,38 @@ class MenuScreen(Screen):
         self.manager.current = 'loading'
         self.start_generation()
     
+    async def generate_properties(self, loading_screen):
+        """Generate properties asynchronously"""
+        db = PropertyDatabase()
+        for i in range(10):
+            try:
+                properties = await generate_random_properties(1, db)
+                loading_screen.progress_bar.value = (i + 1) * 10
+                yield properties
+            except Exception as e:
+                print(f"Error generating property {i+1}: {e}")
+                continue
+    
     def start_generation(self):
         loading_screen = self.manager.get_screen('loading')
         loading_screen.status_label.text = 'Generating new properties...'
         loading_screen.progress_bar.value = 0
         
-        db = PropertyDatabase()
+        async def generation_task():
+            try:
+                async for _ in self.generate_properties(loading_screen):
+                    pass
+                loading_screen.status_label.text = 'Generation complete!'
+                self.check_database_status()
+                Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 1)
+            except Exception as e:
+                loading_screen.status_label.text = f'Error: {str(e)}'
+                Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 3)
         
-        def update_progress(result, i):
-            loading_screen.progress_bar.value = (i + 1) * 10
-            return result
-        
-        def generation_complete(results):
-            loading_screen.status_label.text = 'Generation complete!'
-            self.check_database_status()  # Update button status
-            Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 1)
-        
-        def generation_error(error):
-            loading_screen.status_label.text = f'Error: {str(error)}'
-            Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 3)
-        
-        # Generate one property at a time to show progress
-        d = generate_random_properties(1, db)
-        for i in range(9):  # Generate 9 more for a total of 10
-            d.addCallback(lambda _, i=i: update_progress(_, i))
-            d.addCallback(lambda _: generate_random_properties(1, db))
-        
-        d.addCallback(update_progress, 9)  # Update progress for the last property
-        d.addCallback(generation_complete)
-        d.addErrback(generation_error)
+        # Create a new event loop in this thread and run the coroutine
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(generation_task())
 
 class PropertyGame(Screen):
     def __init__(self, **kwargs):
@@ -386,55 +387,21 @@ class PropertyGameApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running = True
-        self._shutdown_attempted = False
-        
-        def cleanup_reactor():
-            if reactor.running:
-                try:
-                    reactor.stop()
-                except:
-                    pass
-        atexit.register(cleanup_reactor)
-
+    
     def build(self):
         sm = ScreenManager()
         sm.add_widget(MenuScreen(name='menu'))
         sm.add_widget(LoadingScreen(name='loading'))
         sm.add_widget(PropertyGame(name='game'))
         return sm
-
+    
     def stop(self, *largs):
-        if self._shutdown_attempted:
-            return True
-        self._shutdown_attempted = True
         self._running = False
-
-        # Stop the Twisted reactor gracefully if it's running
-        if reactor.running:
-            try:
-                Clock.schedule_once(lambda dt: reactor.callFromThread(reactor.stop), 0)
-            except Exception as e:
-                print(f"Error stopping reactor: {e}")
-                pass
-
         return super(PropertyGameApp, self).stop(*largs)
-
+    
     def on_stop(self):
         self._running = False
 
 if __name__ == '__main__':
-    import atexit
-    
-    def run_app():
-        try:
-            app = PropertyGameApp()
-            app.run()
-        except Exception as e:
-            print(f"Error during app execution: {e}")
-            if reactor.running:
-                try:
-                    reactor.callFromThread(reactor.stop)
-                except:
-                    pass
-    
-    run_app()
+    app = PropertyGameApp()
+    app.run()

@@ -3,22 +3,13 @@ import random
 from typing import List, TypedDict
 from urllib.parse import urlencode
 import jmespath
-from httpx import AsyncClient, Response
-from parsel import Selector
+from httpx import AsyncClient
 import os
 import aiofiles
-import aiohttp
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from database import PropertyDatabase
-from twisted.internet import reactor, defer
-from twisted.internet.defer import inlineCallbacks
-from twisted.web.client import Agent, readBody
-from twisted.internet.ssl import ClientContextFactory
-from twisted.web.http_headers import Headers
-from twisted.web.client import HTTPConnectionPool
-from twisted.internet.endpoints import TCP4ClientEndpoint
-from twisted.web.client import ProxyAgent
 
 # Type definitions
 class PropertyResult(TypedDict):
@@ -74,13 +65,6 @@ TOP_UK_CITIES = [
     "wolverhampton"
 ]
 
-class WebClientContextFactory(ClientContextFactory):
-    def getContext(self, hostname, port):
-        return ClientContextFactory.getContext(self)
-
-pool = HTTPConnectionPool(reactor)
-agent = Agent(reactor, WebClientContextFactory(), pool=pool)
-
 def find_json_objects(text: str, decoder=json.JSONDecoder()):
     """Find JSON objects in text, and generate decoded JSON data"""
     pos = 0
@@ -97,6 +81,7 @@ def find_json_objects(text: str, decoder=json.JSONDecoder()):
 
 def extract_property(response_text: str) -> dict:
     """Extract property data from rightmove PAGE_MODEL javascript variable"""
+    from parsel import Selector
     selector = Selector(response_text)
     data = selector.xpath("//script[contains(.,'PAGE_MODEL = ')]/text()").get()
     if not data:
@@ -163,33 +148,29 @@ def parse_property(data) -> PropertyResult:
     results.pop('price_sqft', None)
     return results
 
-@inlineCallbacks
-def fetch_url(url, binary=False):
-    """Fetch URL using Twisted's Agent"""
-    headers = Headers({
-        'User-Agent': ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'],
-        'Accept': ['text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'],
-        'Accept-Language': ['en-US,en;q=0.5'],
-    })
+async def fetch_url(url: str, binary: bool = False) -> str:
+    """Fetch URL using httpx"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+    }
     
-    response = yield agent.request(b'GET', url.encode('utf-8'), headers)
-    body = yield readBody(response)
-    if binary:
-        defer.returnValue(body)
-    else:
-        defer.returnValue(body.decode('utf-8'))
+    async with AsyncClient() as client:
+        response = await client.get(url, headers=headers, follow_redirects=True)
+        if binary:
+            return response.content
+        return response.text
 
-@inlineCallbacks
-def find_locations(query: str):
+async def find_locations(query: str) -> List[str]:
     """Use rightmove's typeahead api to find location IDs"""
     tokenize_query = "".join(c + ("/" if i % 2 == 0 else "") for i, c in enumerate(query.upper(), start=1))
     url = f"https://www.rightmove.co.uk/typeAhead/uknostreet/{tokenize_query.strip('/')}/"
-    response = yield fetch_url(url)
+    response = await fetch_url(url)
     data = json.loads(response)
-    defer.returnValue([prediction["locationIdentifier"] for prediction in data["typeAheadLocations"]])
+    return [prediction["locationIdentifier"] for prediction in data["typeAheadLocations"]]
 
-@inlineCallbacks
-def scrape_search(location_id: str):
+async def scrape_search(location_id: str) -> List[dict]:
     """Scrape property listings for a given location"""
     RESULTS_PER_PAGE = 24
     
@@ -210,51 +191,55 @@ def scrape_search(location_id: str):
         }
         return url + urlencode(params)
 
-    first_page = yield fetch_url(make_url(0))
+    first_page = await fetch_url(make_url(0))
     first_page_data = json.loads(first_page)
     total_results = int(first_page_data['resultCount'].replace(',', ''))
     results = first_page_data['properties']
     
     max_api_results = 1000
+    tasks = []
     for offset in range(RESULTS_PER_PAGE, min(total_results, max_api_results), RESULTS_PER_PAGE):
-        page_data = yield fetch_url(make_url(offset))
-        data = json.loads(page_data)
-        results.extend(data['properties'])
+        tasks.append(fetch_url(make_url(offset)))
     
-    defer.returnValue(results)
+    if tasks:
+        responses = await asyncio.gather(*tasks)
+        for response in responses:
+            data = json.loads(response)
+            results.extend(data['properties'])
+    
+    return results
 
-@inlineCallbacks
-def scrape_properties(urls: List[str]):
+async def scrape_properties(urls: List[str]) -> List[dict]:
     """Scrape Rightmove property listings for property data"""
     properties = []
-    for url in urls:
+    tasks = [fetch_url(url) for url in urls]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for url, response in zip(urls, responses):
+        if isinstance(response, Exception):
+            print(f"Error scraping {url}: {str(response)}")
+            continue
         try:
-            response = yield fetch_url(url)
             property_data = extract_property(response)
             if property_data:
                 properties.append(parse_property(property_data))
         except Exception as e:
-            print(f"Error scraping {url}: {str(e)}")
-    defer.returnValue(properties)
+            print(f"Error parsing {url}: {str(e)}")
+    
+    return properties
 
-@inlineCallbacks
-def download_image(url: str, path: str):
+async def download_image(url: str, path: str) -> bool:
     """Download an image from URL and save it to path"""
     try:
-        # Get binary image data
-        image_data = yield fetch_url(url, binary=True)
-        
-        # Write binary data directly to file
-        with open(path, 'wb') as f:
-            f.write(image_data)
-            
-        defer.returnValue(True)
+        image_data = await fetch_url(url, binary=True)
+        async with aiofiles.open(path, 'wb') as f:
+            await f.write(image_data)
+        return True
     except Exception as e:
         print(f"Error downloading image {url}: {str(e)}")
-        defer.returnValue(False)
+        return False
 
-@inlineCallbacks
-def save_property_data(property_data: dict, base_dir: str):
+async def save_property_data(property_data: dict, base_dir: str) -> Path:
     """Save property data and images to disk"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     property_dir = Path(base_dir) / f"{property_data['id']}_{timestamp}"
@@ -262,30 +247,28 @@ def save_property_data(property_data: dict, base_dir: str):
 
     # Save JSON data
     json_path = property_dir / "property_data.json"
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(property_data, f, indent=2, ensure_ascii=False)
+    async with aiofiles.open(json_path, 'w', encoding='utf-8') as f:
+        await f.write(json.dumps(property_data, indent=2, ensure_ascii=False))
 
     # Create images directory
     images_dir = property_dir / "images"
     images_dir.mkdir(exist_ok=True)
 
     # Download images
+    tasks = []
     for i, photo in enumerate(property_data.get('photos', [])):
         if photo and photo.get('url'):
-            filename = f"photo_{i}.jpg"  # Changed to .jpg since Rightmove uses JPEG
+            filename = f"photo_{i}.jpg"
             path = images_dir / filename
-            try:
-                success = yield download_image(photo['url'], str(path))
-                if not success:
-                    print(f"Failed to download image {i} for property {property_data['id']}")
-            except Exception as e:
-                print(f"Error saving image {i} for property {property_data['id']}: {str(e)}")
+            tasks.append(download_image(photo['url'], str(path)))
     
-    defer.returnValue(property_dir)
+    if tasks:
+        await asyncio.gather(*tasks)
+    
+    return property_dir
 
-@inlineCallbacks
-def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = None):
-    """Generate random properties using Twisted's deferred pattern"""
+async def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = None) -> List[dict]:
+    """Generate random properties"""
     if db is None:
         db = PropertyDatabase()
     
@@ -294,26 +277,24 @@ def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = N
     
     for city in selected_cities:
         try:
-            location_ids = yield find_locations(city)
+            location_ids = await find_locations(city)
             if location_ids:
-                search_results = yield scrape_search(location_ids[0])
+                search_results = await scrape_search(location_ids[0])
                 if search_results:
                     random_property = random.choice(search_results)
                     property_url = f"https://www.rightmove.co.uk/properties/{random_property['id']}#/"
-                    property_details = yield scrape_properties([property_url])
+                    property_details = await scrape_properties([property_url])
                     if property_details:
                         property_data = property_details[0]
-                        property_dir = yield save_property_data(property_data, "rightmove_data")
+                        property_dir = await save_property_data(property_data, "rightmove_data")
                         db.add_property(property_data, str(property_dir))
                         properties.append(property_data)
         except Exception as e:
             print(f"Error processing {city}: {str(e)}")
             continue
     
-    defer.returnValue(properties)
+    return properties
 
 if __name__ == "__main__":
     db = PropertyDatabase()
-    d = generate_random_properties(10, db)
-    d.addCallback(lambda result: reactor.stop())
-    reactor.run()
+    asyncio.run(generate_random_properties(10, db))
