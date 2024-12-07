@@ -331,10 +331,10 @@ class PropertyGame(Screen):
         info_stages = [
             [f"[b]Bedrooms:[/b] {self.current_property['bedrooms']}"],
             [f"[b]Bathrooms:[/b] {self.current_property['bathrooms']}"],
-            [f"[b]Size:[/b] {next((f'{s['max']} {s['unit']}' for s in self.current_property['sizings'] if s['unit'] == 'sqm'), 'Not specified')}"],
-            [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property['features']]
+            [f"[b]Size:[/b] {next((f'{s.get('max')} {s.get('unit')}' for s in self.current_property.get('sizings', []) if s.get('unit') == 'sqm'), 'Not specified')}"],
+            [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property.get('features', [])]
         ]
-        
+
         return info_stages
     
     def update_info_panel(self):
