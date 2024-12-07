@@ -9,14 +9,15 @@ from kivy.clock import Clock
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.core.image import Image as CoreImage
 import json
 import random
-from pathlib import Path
 import asyncio
 from functools import partial
 from main import generate_random_properties
 from database import PropertyDatabase
 import threading
+import io
 
 class LoadingScreen(Screen):
     def __init__(self, **kwargs):
@@ -159,6 +160,8 @@ class PropertyGame(Screen):
         self.db = PropertyDatabase()
         self.properties = []
         self.current_property = None
+        self.current_images = []
+        self.current_plot = None
         self.current_image_index = 0
         self.score = 0
         self.guesses_remaining = 5
@@ -167,8 +170,8 @@ class PropertyGame(Screen):
         # Main layout
         main_layout = BoxLayout(orientation='horizontal')
         
-        # Main content area (left side)
-        main_content = BoxLayout(orientation='vertical', size_hint_x=0.7)
+        # Left side (images and controls)
+        left_side = BoxLayout(orientation='vertical', size_hint_x=0.7)
         
         # Top controls
         top_controls = BoxLayout(size_hint_y=0.1)
@@ -189,20 +192,30 @@ class PropertyGame(Screen):
         top_controls.add_widget(self.remaining_label)
         top_controls.add_widget(self.score_label)
         top_controls.add_widget(self.random_btn)
-        main_content.add_widget(top_controls)
+        left_side.add_widget(top_controls)
         
-        # Image display and counter
+        # Image display area
+        image_area = BoxLayout(orientation='vertical')
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
-        main_content.add_widget(self.image_widget)
+        image_area.add_widget(self.image_widget)
         self.image_counter = Label(text='', size_hint_y=0.1)
-        main_content.add_widget(self.image_counter)
+        image_area.add_widget(self.image_counter)
+        left_side.add_widget(image_area)
+        
+        # UK Plot
+        self.plot_widget = Image(
+            allow_stretch=True,
+            keep_ratio=True,
+            size_hint_y=0.4
+        )
+        left_side.add_widget(self.plot_widget)
         
         # Guesses remaining label
         self.guesses_label = Label(
             text=f'Guesses remaining: {self.guesses_remaining}',
             size_hint_y=0.1
         )
-        main_content.add_widget(self.guesses_label)
+        left_side.add_widget(self.guesses_label)
         
         # Price guess controls
         guess_controls = BoxLayout(size_hint_y=0.1)
@@ -219,15 +232,15 @@ class PropertyGame(Screen):
         )
         guess_controls.add_widget(self.price_input)
         guess_controls.add_widget(self.submit_btn)
-        main_content.add_widget(guess_controls)
+        left_side.add_widget(guess_controls)
         
         # Result label
         self.result_label = Label(text='', size_hint_y=0.1)
-        main_content.add_widget(self.result_label)
+        left_side.add_widget(self.result_label)
         
-        main_layout.add_widget(main_content)
+        main_layout.add_widget(left_side)
         
-        # Property info panel (right side)
+        # Right side (property info)
         info_panel = BoxLayout(orientation='vertical', size_hint_x=0.3, padding=10)
         info_panel.add_widget(Label(text='Property Information', size_hint_y=0.1))
         
@@ -260,7 +273,6 @@ class PropertyGame(Screen):
     
     def load_properties(self):
         """Load properties from database"""
-        # Check if we have enough unused properties
         property_data = self.db.get_random_unused_properties(10)
         if not property_data:
             # If no unused properties, reset all properties to unused
@@ -268,7 +280,7 @@ class PropertyGame(Screen):
             # Try to get properties again
             property_data = self.db.get_random_unused_properties(10)
         
-        self.properties = [(data, images_dir) for data, images_dir in property_data]
+        self.properties = property_data
         self.remaining_label.text = f'Properties remaining: {len(self.properties)}'
         if self.properties:
             self.random_btn.disabled = False
@@ -308,7 +320,7 @@ class PropertyGame(Screen):
     
     def load_random_property(self, instance):
         if self.properties:
-            self.current_property, self.current_images_dir = self.properties.pop(0)
+            self.current_property, self.current_images, self.current_plot = self.properties.pop(0)
             self.current_image_index = 0
             self.price_input.text = ''
             self.result_label.text = ''
@@ -325,11 +337,17 @@ class PropertyGame(Screen):
         if not self.current_property:
             return
         
-        images_dir = Path(self.current_images_dir) / "images"
-        image_files = sorted([f for f in images_dir.glob("photo_*.jpg")])
-        if image_files and 0 <= self.current_image_index < len(image_files):
-            self.image_widget.source = str(image_files[self.current_image_index])
-            self.image_counter.text = f'Image {self.current_image_index + 1}/{len(image_files)}'
+        # Update property image
+        if self.current_images and 0 <= self.current_image_index < len(self.current_images):
+            image_data = self.current_images[self.current_image_index]
+            image = CoreImage(io.BytesIO(image_data), ext='jpg')
+            self.image_widget.texture = image.texture
+            self.image_counter.text = f'Image {self.current_image_index + 1}/{len(self.current_images)}'
+        
+        # Update UK plot
+        if self.current_plot:
+            plot_image = CoreImage(io.BytesIO(self.current_plot), ext='png')
+            self.plot_widget.texture = plot_image.texture
     
     def check_guess(self, instance):
         if not self.current_property or self.guesses_remaining <= 0:
@@ -382,9 +400,7 @@ class PropertyGame(Screen):
                 self.current_image_index -= 1
                 self.update_display()
         elif keycode[1] == 'right':
-            images_dir = Path(self.current_images_dir) / "images"
-            image_count = len(list(images_dir.glob("photo_*.jpg")))
-            if self.current_image_index < image_count - 1:
+            if self.current_image_index < len(self.current_images) - 1:
                 self.current_image_index += 1
                 self.update_display()
         return True

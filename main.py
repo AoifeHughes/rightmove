@@ -4,12 +4,13 @@ from typing import List, TypedDict
 from urllib.parse import urlencode
 import jmespath
 from httpx import AsyncClient
-import os
-import aiofiles
 import asyncio
 from datetime import datetime
-from pathlib import Path
+import io
 from database import PropertyDatabase
+import matplotlib.pyplot as plt
+import geopandas as gpd
+from shapely.geometry import Point
 
 # Type definitions
 class PropertyResult(TypedDict):
@@ -43,26 +44,10 @@ class PropertyResult(TypedDict):
 
 # Top 20 UK Cities by population
 TOP_UK_CITIES = [
-    "london",
-    "birmingham",
-    "glasgow",
-    "liverpool",
-    "leeds",
-    "sheffield",
-    "manchester",
-    "edinburgh",
-    "bristol",
-    "cardiff",
-    "leicester",
-    "coventry",
-    "nottingham",
-    "newcastle upon tyne",
-    "belfast",
-    "brighton",
-    "hull",
-    "plymouth",
-    "bradford",
-    "wolverhampton"
+    "london", "birmingham", "glasgow", "liverpool", "leeds",
+    "sheffield", "manchester", "edinburgh", "bristol", "cardiff",
+    "leicester", "coventry", "nottingham", "newcastle upon tyne",
+    "belfast", "brighton", "hull", "plymouth", "bradford", "wolverhampton"
 ]
 
 def find_json_objects(text: str, decoder=json.JSONDecoder()):
@@ -228,44 +213,61 @@ async def scrape_properties(urls: List[str]) -> List[dict]:
     
     return properties
 
-async def download_image(url: str, path: str) -> bool:
-    """Download an image from URL and save it to path"""
+async def download_image(url: str) -> bytes:
+    """Download an image from URL and return the binary data"""
     try:
-        image_data = await fetch_url(url, binary=True)
-        async with aiofiles.open(path, 'wb') as f:
-            await f.write(image_data)
-        return True
+        return await fetch_url(url, binary=True)
     except Exception as e:
         print(f"Error downloading image {url}: {str(e)}")
-        return False
+        return None
 
-async def save_property_data(property_data: dict, base_dir: str) -> Path:
-    """Save property data and images to disk"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    property_dir = Path(base_dir) / f"{property_data['id']}_{timestamp}"
-    property_dir.mkdir(parents=True, exist_ok=True)
+def create_uk_plot(latitude: float, longitude: float) -> bytes:
+    """Create a UK map plot with the property location marked"""
+    import matplotlib
+    matplotlib.use('Agg')  # Set backend before importing pyplot
+    import matplotlib.pyplot as plt
+    
+    url = "https://raw.githubusercontent.com/martinjc/UK-GeoJSON/master/json/administrative/gb/topo_lad.json"
+    uk = gpd.read_file(url)
+    
+    point = gpd.GeoDataFrame(
+        geometry=[Point(longitude, latitude)],
+        crs="EPSG:4326"
+    )
+    
+    fig, ax = plt.subplots(figsize=(10, 12))
+    uk.plot(ax=ax, color='lightgray', edgecolor='black')
+    point.plot(ax=ax, color='red', marker='o', markersize=100)
+    
+    ax.set_xlim([-8, 2])
+    ax.set_ylim([50, 59])
+    plt.title('Position on UK Map')
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close(fig)
+    return buf.getvalue()
 
-    # Save JSON data
-    json_path = property_dir / "property_data.json"
-    async with aiofiles.open(json_path, 'w', encoding='utf-8') as f:
-        await f.write(json.dumps(property_data, indent=2, ensure_ascii=False))
-
-    # Create images directory
-    images_dir = property_dir / "images"
-    images_dir.mkdir(exist_ok=True)
-
+async def save_property_data(property_data: dict, db: PropertyDatabase) -> None:
+    """Save property data and images to database"""
     # Download images
+    images = []
     tasks = []
-    for i, photo in enumerate(property_data.get('photos', [])):
+    for photo in property_data.get('photos', []):
         if photo and photo.get('url'):
-            filename = f"photo_{i}.jpg"
-            path = images_dir / filename
-            tasks.append(download_image(photo['url'], str(path)))
+            tasks.append(download_image(photo['url']))
     
     if tasks:
-        await asyncio.gather(*tasks)
+        image_data = await asyncio.gather(*tasks)
+        images = [img for img in image_data if img is not None]
     
-    return property_dir
+    # Create UK position plot
+    plot_data = None
+    if property_data.get('latitude') and property_data.get('longitude'):
+        plot_data = create_uk_plot(property_data['latitude'], property_data['longitude'])
+    
+    # Save to database
+    db.add_property(property_data, images, plot_data)
 
 async def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = None, progress_callback=None) -> List[dict]:
     """Generate random properties with progress updates"""
@@ -289,8 +291,7 @@ async def generate_random_properties(num_properties: int = 1, db: PropertyDataba
                     property_details = await scrape_properties([property_url])
                     if property_details:
                         property_data = property_details[0]
-                        property_dir = await save_property_data(property_data, "rightmove_data")
-                        db.add_property(property_data, str(property_dir))
+                        await save_property_data(property_data, db)
                         properties.append(property_data)
                         
                         if progress_callback:
