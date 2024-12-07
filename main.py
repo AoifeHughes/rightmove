@@ -267,16 +267,19 @@ async def save_property_data(property_data: dict, base_dir: str) -> Path:
     
     return property_dir
 
-async def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = None) -> List[dict]:
-    """Generate random properties"""
+async def generate_random_properties(num_properties: int = 1, db: PropertyDatabase = None, progress_callback=None) -> List[dict]:
+    """Generate random properties with progress updates"""
     if db is None:
         db = PropertyDatabase()
     
     selected_cities = random.sample(TOP_UK_CITIES, num_properties)
     properties = []
     
-    for city in selected_cities:
+    for i, city in enumerate(selected_cities):
         try:
+            if progress_callback:
+                progress_callback(i * 10)  # Update progress (0-100)
+                
             location_ids = await find_locations(city)
             if location_ids:
                 search_results = await scrape_search(location_ids[0])
@@ -289,6 +292,9 @@ async def generate_random_properties(num_properties: int = 1, db: PropertyDataba
                         property_dir = await save_property_data(property_data, "rightmove_data")
                         db.add_property(property_data, str(property_dir))
                         properties.append(property_data)
+                        
+                        if progress_callback:
+                            progress_callback((i + 1) * 10)  # Update progress (0-100)
         except Exception as e:
             print(f"Error processing {city}: {str(e)}")
             continue

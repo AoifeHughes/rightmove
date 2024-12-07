@@ -16,6 +16,7 @@ import asyncio
 from functools import partial
 from main import generate_random_properties
 from database import PropertyDatabase
+import threading
 
 class LoadingScreen(Screen):
     def __init__(self, **kwargs):
@@ -109,38 +110,47 @@ class MenuScreen(Screen):
         self.manager.current = 'loading'
         self.start_generation()
     
-    async def generate_properties(self, loading_screen):
-        """Generate properties asynchronously"""
-        db = PropertyDatabase()
-        for i in range(10):
-            try:
-                properties = await generate_random_properties(1, db)
-                loading_screen.progress_bar.value = (i + 1) * 10
-                yield properties
-            except Exception as e:
-                print(f"Error generating property {i+1}: {e}")
-                continue
+    def update_progress(self, progress):
+        """Update the loading screen progress"""
+        loading_screen = self.manager.get_screen('loading')
+        loading_screen.progress_bar.value = progress
+    
+    def generation_complete(self, *args):
+        """Called when generation is complete"""
+        loading_screen = self.manager.get_screen('loading')
+        loading_screen.status_label.text = 'Generation complete!'
+        self.check_database_status()
+        Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 1)
+    
+    def generation_error(self, error):
+        """Called when generation encounters an error"""
+        loading_screen = self.manager.get_screen('loading')
+        loading_screen.status_label.text = f'Error: {str(error)}'
+        Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 3)
     
     def start_generation(self):
+        """Start property generation in a non-blocking way"""
         loading_screen = self.manager.get_screen('loading')
         loading_screen.status_label.text = 'Generating new properties...'
         loading_screen.progress_bar.value = 0
         
         async def generation_task():
             try:
-                async for _ in self.generate_properties(loading_screen):
-                    pass
-                loading_screen.status_label.text = 'Generation complete!'
-                self.check_database_status()
-                Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 1)
+                await generate_random_properties(10, self.db, self.update_progress)
+                Clock.schedule_once(self.generation_complete)
             except Exception as e:
-                loading_screen.status_label.text = f'Error: {str(e)}'
-                Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 3)
+                Clock.schedule_once(lambda dt: self.generation_error(str(e)))
         
-        # Create a new event loop in this thread and run the coroutine
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(generation_task())
+        # Run the async task in a separate thread
+        def run_async_task():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(generation_task())
+            loop.close()
+        
+        thread = threading.Thread(target=run_async_task)
+        thread.daemon = True
+        thread.start()
 
 class PropertyGame(Screen):
     def __init__(self, **kwargs):
