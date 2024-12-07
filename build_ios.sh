@@ -24,6 +24,7 @@ pip3 install buildozer
 # Install Kivy dependencies
 echo "Installing Kivy dependencies..."
 pip3 install kivy-ios
+pip install --target=/Users/aoife/git/rightmove/.buildozer/applibs kivy
 
 # Create iOS build
 echo "Building for iOS..."
