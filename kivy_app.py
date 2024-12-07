@@ -14,7 +14,7 @@ import json
 import random
 import asyncio
 from functools import partial
-from main import generate_random_properties
+from data_getter import generate_random_properties
 from database import PropertyDatabase
 import threading
 import io
@@ -161,7 +161,6 @@ class PropertyGame(Screen):
         self.properties = []
         self.current_property = None
         self.current_images = []
-        self.current_plot = None
         self.current_image_index = 0
         self.score = 0
         self.guesses_remaining = 5
@@ -177,38 +176,53 @@ class PropertyGame(Screen):
         top_controls = BoxLayout(size_hint_y=0.1)
         self.remaining_label = Label(
             text='Properties remaining: 0',
-            size_hint_x=0.3
+            size_hint_x=0.25
         )
         self.score_label = Label(
             text=f'Score: {self.score}',
-            size_hint_x=0.3
+            size_hint_x=0.25
         )
         self.random_btn = Button(
             text='Next Property',
-            size_hint_x=0.4,
+            size_hint_x=0.25,
             on_press=self.load_random_property,
             disabled=True
+        )
+        self.menu_btn = Button(
+            text='Main Menu',
+            size_hint_x=0.25,
+            on_press=self.return_to_menu
         )
         top_controls.add_widget(self.remaining_label)
         top_controls.add_widget(self.score_label)
         top_controls.add_widget(self.random_btn)
+        top_controls.add_widget(self.menu_btn)
         left_side.add_widget(top_controls)
         
         # Image display area
         image_area = BoxLayout(orientation='vertical')
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
         image_area.add_widget(self.image_widget)
+        
+        # Navigation buttons
+        nav_buttons = BoxLayout(size_hint_y=0.1, spacing=10, padding=10)
+        self.prev_button = Button(
+            text='←',
+            on_press=lambda x: self.change_image('left'),
+            size_hint_x=0.5
+        )
+        self.next_button = Button(
+            text='→',
+            on_press=lambda x: self.change_image('right'),
+            size_hint_x=0.5
+        )
+        nav_buttons.add_widget(self.prev_button)
+        nav_buttons.add_widget(self.next_button)
+        image_area.add_widget(nav_buttons)
+        
         self.image_counter = Label(text='', size_hint_y=0.1)
         image_area.add_widget(self.image_counter)
         left_side.add_widget(image_area)
-        
-        # UK Plot
-        self.plot_widget = Image(
-            allow_stretch=True,
-            keep_ratio=True,
-            size_hint_y=0.4
-        )
-        left_side.add_widget(self.plot_widget)
         
         # Guesses remaining label
         self.guesses_label = Label(
@@ -271,6 +285,18 @@ class PropertyGame(Screen):
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_key_down)
     
+    def change_image(self, direction):
+        """Handle image navigation"""
+        if not self.current_property:
+            return
+        
+        if direction == 'left' and self.current_image_index > 0:
+            self.current_image_index -= 1
+            self.update_display()
+        elif direction == 'right' and self.current_image_index < len(self.current_images) - 1:
+            self.current_image_index += 1
+            self.update_display()
+    
     def load_properties(self):
         """Load properties from database"""
         property_data = self.db.get_random_unused_properties(10)
@@ -290,7 +316,7 @@ class PropertyGame(Screen):
             self.result_label.text = 'No more properties available!'
             Clock.schedule_once(lambda dt: self.return_to_menu(), 2)
     
-    def return_to_menu(self):
+    def return_to_menu(self, *args):
         self.manager.current = 'menu'
     
     def get_initial_info(self):
@@ -320,7 +346,13 @@ class PropertyGame(Screen):
     
     def load_random_property(self, instance):
         if self.properties:
-            self.current_property, self.current_images, self.current_plot = self.properties.pop(0)
+            self.current_property, images, plot = self.properties.pop(0)
+            # Insert plot as first image if it exists
+            self.current_images = []
+            if plot:
+                self.current_images.append(plot)
+            self.current_images.extend(images)
+            
             self.current_image_index = 0
             self.price_input.text = ''
             self.result_label.text = ''
@@ -340,14 +372,13 @@ class PropertyGame(Screen):
         # Update property image
         if self.current_images and 0 <= self.current_image_index < len(self.current_images):
             image_data = self.current_images[self.current_image_index]
-            image = CoreImage(io.BytesIO(image_data), ext='jpg')
+            image = CoreImage(io.BytesIO(image_data), ext='png' if self.current_image_index == 0 else 'jpg')
             self.image_widget.texture = image.texture
             self.image_counter.text = f'Image {self.current_image_index + 1}/{len(self.current_images)}'
-        
-        # Update UK plot
-        if self.current_plot:
-            plot_image = CoreImage(io.BytesIO(self.current_plot), ext='png')
-            self.plot_widget.texture = plot_image.texture
+            
+            # Update navigation button states
+            self.prev_button.disabled = self.current_image_index == 0
+            self.next_button.disabled = self.current_image_index >= len(self.current_images) - 1
     
     def check_guess(self, instance):
         if not self.current_property or self.guesses_remaining <= 0:
@@ -396,13 +427,9 @@ class PropertyGame(Screen):
             return True
         
         if keycode[1] == 'left':
-            if self.current_image_index > 0:
-                self.current_image_index -= 1
-                self.update_display()
+            self.change_image('left')
         elif keycode[1] == 'right':
-            if self.current_image_index < len(self.current_images) - 1:
-                self.current_image_index += 1
-                self.update_display()
+            self.change_image('right')
         return True
     
     def _on_keyboard_closed(self):
