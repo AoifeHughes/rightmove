@@ -328,10 +328,16 @@ class PropertyGame(Screen):
     
     def get_progressive_info(self):
         """Return information to reveal progressively with each guess"""
+        def get_size_info():
+            for s in self.current_property.get('sizings', []):
+                if s.get('unit') == 'sqm':
+                    return f"{s.get('max')} {s.get('unit')}"
+            return 'Not specified'
+        
         info_stages = [
             [f"[b]Bedrooms:[/b] {self.current_property['bedrooms']}"],
             [f"[b]Bathrooms:[/b] {self.current_property['bathrooms']}"],
-            [f"[b]Size:[/b] {next((f'{s.get('max')} {s.get('unit')}' for s in self.current_property.get('sizings', []) if s.get('unit') == 'sqm'), 'Not specified')}"],
+            [f"[b]Size:[/b] {get_size_info()}"],
             [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property.get('features', [])]
         ]
 
