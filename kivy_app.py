@@ -6,6 +6,7 @@ from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.core.window import Window
 from kivy.clock import Clock
+from kivy.uix.scrollview import ScrollView
 import json
 import random
 from pathlib import Path
@@ -15,11 +16,16 @@ from main import generate_random_properties
 class PropertyGame(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.orientation = 'vertical'
+        self.orientation = 'horizontal'
         self.properties = []
         self.current_property = None
         self.current_image_index = 0
         self.score = 0
+        self.guesses_remaining = 5
+        self.revealed_info = []
+        
+        # Main content area (left side)
+        main_content = BoxLayout(orientation='vertical', size_hint_x=0.7)
         
         # Top controls
         top_controls = BoxLayout(size_hint_y=0.1)
@@ -40,13 +46,20 @@ class PropertyGame(BoxLayout):
         top_controls.add_widget(self.remaining_label)
         top_controls.add_widget(self.score_label)
         top_controls.add_widget(self.random_btn)
-        self.add_widget(top_controls)
+        main_content.add_widget(top_controls)
         
         # Image display and counter
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
-        self.add_widget(self.image_widget)
+        main_content.add_widget(self.image_widget)
         self.image_counter = Label(text='', size_hint_y=0.1)
-        self.add_widget(self.image_counter)
+        main_content.add_widget(self.image_counter)
+        
+        # Guesses remaining label
+        self.guesses_label = Label(
+            text=f'Guesses remaining: {self.guesses_remaining}',
+            size_hint_y=0.1
+        )
+        main_content.add_widget(self.guesses_label)
         
         # Price guess controls
         guess_controls = BoxLayout(size_hint_y=0.1)
@@ -63,11 +76,38 @@ class PropertyGame(BoxLayout):
         )
         guess_controls.add_widget(self.price_input)
         guess_controls.add_widget(self.submit_btn)
-        self.add_widget(guess_controls)
+        main_content.add_widget(guess_controls)
         
         # Result label
         self.result_label = Label(text='', size_hint_y=0.1)
-        self.add_widget(self.result_label)
+        main_content.add_widget(self.result_label)
+        
+        self.add_widget(main_content)
+        
+        # Property info panel (right side)
+        info_panel = BoxLayout(orientation='vertical', size_hint_x=0.3, padding=10)
+        info_panel.add_widget(Label(text='Property Information', size_hint_y=0.1))
+        
+        # Scrollable info area
+        scroll_view = ScrollView(size_hint_y=0.9)
+        self.info_label = Label(
+            text='',
+            size_hint_y=None,
+            markup=True,
+            halign='left',
+            valign='top',
+            padding=(10, 10)
+        )
+        # Bind the width to ensure text wrapping
+        def update_text_width(instance, value):
+            self.info_label.text_size = (value * 0.9, None)  # 90% of the scroll view width
+            
+        scroll_view.bind(width=update_text_width)
+        self.info_label.bind(texture_size=self.info_label.setter('size'))
+        scroll_view.add_widget(self.info_label)
+        info_panel.add_widget(scroll_view)
+        
+        self.add_widget(info_panel)
         
         # Keyboard binding
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
@@ -75,6 +115,31 @@ class PropertyGame(BoxLayout):
         
         # Start property generation
         Clock.schedule_once(self.generate_properties, 0)
+
+    def get_initial_info(self):
+        """Return the initial property information to show"""
+        return [
+            f"[b]Location:[/b] {self.current_property['address']['displayAddress']}",
+            f"[b]Property Type:[/b] {self.current_property['property_type']}"
+        ]
+
+    def get_progressive_info(self):
+        """Return information to reveal progressively with each guess"""
+        info_stages = [
+            [f"[b]Bedrooms:[/b] {self.current_property['bedrooms']}"],
+            [f"[b]Bathrooms:[/b] {self.current_property['bathrooms']}"],
+            [f"[b]Size:[/b] {next((f'{s['max']} {s['unit']}' for s in self.current_property['sizings'] if s['unit'] == 'sqm'), 'Not specified')}"],
+            [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property['features']]
+        ]
+        return info_stages
+
+    def update_info_panel(self):
+        """Update the information panel with current revealed info"""
+        if not self.current_property:
+            return
+        
+        info_text = '\n\n'.join(self.revealed_info)
+        self.info_label.text = info_text
 
     async def async_generate_properties(self):
         """Generate properties asynchronously"""
@@ -102,6 +167,12 @@ class PropertyGame(BoxLayout):
             self.current_image_index = 0
             self.price_input.text = ''
             self.result_label.text = ''
+            self.guesses_remaining = 5
+            self.guesses_label.text = f'Guesses remaining: {self.guesses_remaining}'
+            
+            # Reset and show initial information
+            self.revealed_info = self.get_initial_info()
+            self.update_info_panel()
             self.update_display()
 
     def update_display(self):
@@ -123,7 +194,7 @@ class PropertyGame(BoxLayout):
             self.image_counter.text = f'Image {self.current_image_index + 1}/{len(image_files)}'
     
     def check_guess(self, instance):
-        if not self.current_property:
+        if not self.current_property or self.guesses_remaining <= 0:
             return
             
         try:
@@ -132,14 +203,36 @@ class PropertyGame(BoxLayout):
             
             difference = abs(guess - actual_price) / actual_price * 100
             
+            # Reveal more information
+            info_stages = self.get_progressive_info()
+            stage_index = 5 - self.guesses_remaining
+            if stage_index < len(info_stages):
+                self.revealed_info.extend(info_stages[stage_index])
+                self.update_info_panel()
+            
+            self.guesses_remaining -= 1
+            self.guesses_label.text = f'Guesses remaining: {self.guesses_remaining}'
+            
+            # Check if guess is correct (within 5%)
             if difference <= 5:
-                self.score += 1
+                points = self.guesses_remaining + 1
+                self.score += points
                 self.score_label.text = f'Score: {self.score}'
-                self.result_label.text = f'Correct! Actual price: £{actual_price:,.0f}'
+                self.result_label.text = f'Correct! You got {points} points! Actual price: £{actual_price:,.0f}'
                 self.properties.remove(self.current_property)
                 self.remaining_label.text = f'Properties remaining: {len(self.properties)}'
+                self.submit_btn.disabled = True
             else:
-                self.result_label.text = 'Try again! (within 5%)'
+                # Provide feedback on the guess
+                feedback = "Too high!" if guess > actual_price else "Too low!"
+                if abs(guess - actual_price) > actual_price:  # More than 2x different
+                    feedback += " (More than 2x different!)"
+                
+                if self.guesses_remaining > 0:
+                    self.result_label.text = f'{feedback} Try again!'
+                else:
+                    self.result_label.text = f'Game over! The actual price was £{actual_price:,.0f}'
+                    self.submit_btn.disabled = True
                 
         except ValueError:
             self.result_label.text = 'Please enter a valid number'

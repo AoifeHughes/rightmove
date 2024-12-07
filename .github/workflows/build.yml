@@ -1,0 +1,54 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install kivy
+        pip install pyinstaller
+        pip install httpx
+        pip install parsel
+        pip install jmespath
+        pip install aiofiles
+        pip install aiohttp
+        
+    - name: Build executable
+      run: |
+        python -m PyInstaller --name RightmoveGuesser --onefile --windowed ^
+        --hidden-import kivy.uix.boxlayout ^
+        --hidden-import kivy.uix.button ^
+        --hidden-import kivy.uix.textinput ^
+        --hidden-import kivy.uix.image ^
+        --hidden-import kivy.uix.label ^
+        --hidden-import kivy.core.window ^
+        --hidden-import kivy.clock ^
+        --hidden-import kivy.uix.scrollview ^
+        --hidden-import asyncio ^
+        --hidden-import jmespath ^
+        --hidden-import parsel ^
+        --hidden-import aiofiles ^
+        --hidden-import aiohttp ^
+        main.py
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: RightmoveGuesser-windows
+        path: dist/
