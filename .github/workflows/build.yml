@@ -23,18 +23,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install kivy[base] kivy_deps.angle kivy_deps.sdl2 kivy_deps.glew
         pip install pyinstaller
-        pip install httpx
-        pip install parsel
-        pip install jmespath
-        pip install aiofiles
-        pip install aiohttp
+        pip install httpx parsel jmespath aiofiles aiohttp
         
     - name: Build executable
       shell: cmd
       env:
         KIVY_GL_BACKEND: 'angle_sdl2'
       run: |
-        pyinstaller --name RightmoveGuesser --onefile --windowed --add-data "C:\hostedtoolcache\windows\Python\3.9.13\x64\share\glew;share\glew" --add-data "C:\hostedtoolcache\windows\Python\3.9.13\x64\share\sdl2;share\sdl2" --add-data "C:\hostedtoolcache\windows\Python\3.9.13\x64\Lib\site-packages\kivy_deps.angle;kivy_deps.angle" --add-data "C:\hostedtoolcache\windows\Python\3.9.13\x64\Lib\site-packages\kivy_deps.sdl2;kivy_deps.sdl2" --add-data "C:\hostedtoolcache\windows\Python\3.9.13\x64\Lib\site-packages\kivy_deps.glew;kivy_deps.glew" --hidden-import kivy --hidden-import kivy.deps.sdl2 --hidden-import kivy.deps.glew --hidden-import kivy.deps.angle --hidden-import kivy.factory_registers --hidden-import kivy.graphics main.py
+        python -c "import kivy_deps, os; print('KIVY_DEPS_PATH=' + os.path.dirname(kivy_deps.__file__))" >> $GITHUB_ENV
+        pyinstaller --name RightmoveGuesser --onefile --windowed --collect-submodules kivy --hidden-import "win32timezone" main.py
         
     - name: Upload artifact
       uses: actions/upload-artifact@v3
