@@ -30,8 +30,7 @@ jobs:
       env:
         KIVY_GL_BACKEND: 'angle_sdl2'
       run: |
-        python -c "import kivy_deps, os; print('KIVY_DEPS_PATH=' + os.path.dirname(kivy_deps.__file__))" >> $GITHUB_ENV
-        pyinstaller --name RightmoveGuesser --onefile --windowed --collect-submodules kivy --hidden-import "win32timezone" main.py
+        pyinstaller --name RightmoveGuesser --onefile --windowed main.py
         
     - name: Upload artifact
       uses: actions/upload-artifact@v3
