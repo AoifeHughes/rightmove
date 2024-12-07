@@ -144,6 +144,7 @@ class MenuScreen(Screen):
 class PropertyGame(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        
         self.db = PropertyDatabase()
         self.properties = []
         self.current_property = None
@@ -315,8 +316,6 @@ class PropertyGame(Screen):
         
         images_dir = Path(self.current_images_dir) / "images"
         image_files = sorted([f for f in images_dir.glob("photo_*.jpg")])
-        print(images_dir)
-        print(image_files)
         if image_files and 0 <= self.current_image_index < len(image_files):
             self.image_widget.source = str(image_files[self.current_image_index])
             self.image_counter.text = f'Image {self.current_image_index + 1}/{len(image_files)}'
@@ -387,6 +386,15 @@ class PropertyGameApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running = True
+        self._shutdown_attempted = False
+        
+        def cleanup_reactor():
+            if reactor.running:
+                try:
+                    reactor.stop()
+                except:
+                    pass
+        atexit.register(cleanup_reactor)
 
     def build(self):
         sm = ScreenManager()
@@ -396,29 +404,37 @@ class PropertyGameApp(App):
         return sm
 
     def stop(self, *largs):
-        """Clean up resources and stop the application"""
+        if self._shutdown_attempted:
+            return True
+        self._shutdown_attempted = True
         self._running = False
-        # Schedule the reactor stop to avoid the _mainLoopShutdown error
+
+        # Stop the Twisted reactor gracefully if it's running
         if reactor.running:
             try:
-                def stop_reactor():
-                    if reactor.running:
-                        reactor.stop()
-                Clock.schedule_once(lambda dt: stop_reactor(), 0.1)
-            except:
+                Clock.schedule_once(lambda dt: reactor.callFromThread(reactor.stop), 0)
+            except Exception as e:
+                print(f"Error stopping reactor: {e}")
                 pass
+
         return super(PropertyGameApp, self).stop(*largs)
 
     def on_stop(self):
-        """Called when the application is stopping"""
-        if hasattr(self, '_running'):
-            self._running = False
+        self._running = False
 
 if __name__ == '__main__':
-    try:
-        app = PropertyGameApp()
-        app.run()
-    except Exception as e:
-        print(f"Error during app execution: {e}")
-        if reactor.running:
-            reactor.stop()
+    import atexit
+    
+    def run_app():
+        try:
+            app = PropertyGameApp()
+            app.run()
+        except Exception as e:
+            print(f"Error during app execution: {e}")
+            if reactor.running:
+                try:
+                    reactor.callFromThread(reactor.stop)
+                except:
+                    pass
+    
+    run_app()
