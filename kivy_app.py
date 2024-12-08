@@ -1,162 +1,157 @@
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
-from kivy.uix.image import Image
-from kivy.uix.label import Label
-from kivy.core.window import Window
-from kivy.clock import Clock
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.progressbar import ProgressBar
-from kivy.uix.screenmanager import ScreenManager, Screen
-from kivy.core.image import Image as CoreImage
+import asyncio
+import io
 import json
 import random
-import asyncio
+import threading
 from functools import partial
+
+from kivy.app import App
+from kivy.clock import Clock
+from kivy.core.image import Image as CoreImage
+from kivy.core.window import Window
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.image import Image
+from kivy.uix.label import Label
+from kivy.uix.progressbar import ProgressBar
+from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
+
 from data_getter import generate_random_properties
 from database import PropertyDatabase
-import threading
-import io
+
 
 class LoadingScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
-        
-        self.status_label = Label(
-            text='Loading properties...',
-            size_hint_y=0.1
-        )
-        self.progress_bar = ProgressBar(
-            max=100,
-            size_hint_y=0.1
-        )
-        
+        layout = BoxLayout(orientation="vertical", padding=20, spacing=20)
+
+        self.status_label = Label(text="Loading properties...", size_hint_y=0.1)
+        self.progress_bar = ProgressBar(max=100, size_hint_y=0.1)
+
         layout.add_widget(Label(size_hint_y=0.4))  # Spacer
         layout.add_widget(self.status_label)
         layout.add_widget(self.progress_bar)
         layout.add_widget(Label(size_hint_y=0.4))  # Spacer
-        
+
         self.add_widget(layout)
+
 
 class MenuScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.db = PropertyDatabase()
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
-        
+        layout = BoxLayout(orientation="vertical", padding=20, spacing=20)
+
         # Add spacer at top
         layout.add_widget(Label(size_hint_y=0.3))
-        
+
         # Title
-        title = Label(
-            text='Property Price Game',
-            font_size='24sp',
-            size_hint_y=0.2
-        )
+        title = Label(text="Property Price Game", font_size="24sp", size_hint_y=0.2)
         layout.add_widget(title)
-        
+
         # Buttons
         self.start_button = Button(
-            text='Start',
+            text="Start",
             size_hint=(None, None),
             size=(200, 50),
-            pos_hint={'center_x': 0.5}
+            pos_hint={"center_x": 0.5},
         )
         self.start_button.bind(on_press=self.start_game)
-        
+
         generate_button = Button(
-            text='Generate new data',
+            text="Generate new data",
             size_hint=(None, None),
             size=(200, 50),
-            pos_hint={'center_x': 0.5}
+            pos_hint={"center_x": 0.5},
         )
         generate_button.bind(on_press=self.generate_data)
-        
+
         layout.add_widget(self.start_button)
         layout.add_widget(Label(size_hint_y=0.1))  # Spacer
         layout.add_widget(generate_button)
-        
+
         # Add spacer at bottom
         layout.add_widget(Label(size_hint_y=0.3))
-        
+
         self.add_widget(layout)
-        
+
         # Check database status when screen is created
         self.check_database_status()
-    
+
     def check_database_status(self):
         """Check if there are enough properties in the database"""
         count = self.db.count_properties()
         if count < 10:  # Need at least 10 properties for a game
             self.start_button.disabled = True
-            self.start_button.text = 'Need more properties'
+            self.start_button.text = "Need more properties"
         else:
             self.start_button.disabled = False
-            self.start_button.text = 'Start'
-    
+            self.start_button.text = "Start"
+
     def start_game(self, instance):
         # Double check database status before starting
         count = self.db.count_properties()
         if count < 10:
-            self.manager.current = 'loading'
+            self.manager.current = "loading"
             self.start_generation()
             return
-            
-        self.manager.get_screen('game').load_properties()
-        self.manager.current = 'game'
-    
+
+        self.manager.get_screen("game").load_properties()
+        self.manager.current = "game"
+
     def generate_data(self, instance):
-        self.manager.current = 'loading'
+        self.manager.current = "loading"
         self.start_generation()
-    
+
     def update_progress(self, progress):
         """Update the loading screen progress"""
-        loading_screen = self.manager.get_screen('loading')
+        loading_screen = self.manager.get_screen("loading")
         loading_screen.progress_bar.value = progress
-    
+
     def generation_complete(self, *args):
         """Called when generation is complete"""
-        loading_screen = self.manager.get_screen('loading')
-        loading_screen.status_label.text = 'Generation complete!'
+        loading_screen = self.manager.get_screen("loading")
+        loading_screen.status_label.text = "Generation complete!"
         self.check_database_status()
-        Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 1)
-    
+        Clock.schedule_once(lambda dt: setattr(self.manager, "current", "menu"), 1)
+
     def generation_error(self, error):
         """Called when generation encounters an error"""
-        loading_screen = self.manager.get_screen('loading')
-        loading_screen.status_label.text = f'Error: {str(error)}'
-        Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'menu'), 3)
-    
+        loading_screen = self.manager.get_screen("loading")
+        loading_screen.status_label.text = f"Error: {str(error)}"
+        Clock.schedule_once(lambda dt: setattr(self.manager, "current", "menu"), 3)
+
     def start_generation(self):
         """Start property generation in a non-blocking way"""
-        loading_screen = self.manager.get_screen('loading')
-        loading_screen.status_label.text = 'Generating new properties...'
+        loading_screen = self.manager.get_screen("loading")
+        loading_screen.status_label.text = "Generating new properties..."
         loading_screen.progress_bar.value = 0
-        
+
         async def generation_task():
             try:
                 await generate_random_properties(10, self.db, self.update_progress)
                 Clock.schedule_once(self.generation_complete)
             except Exception as e:
                 Clock.schedule_once(lambda dt: self.generation_error(str(e)))
-        
+
         # Run the async task in a separate thread
         def run_async_task():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(generation_task())
             loop.close()
-        
+
         thread = threading.Thread(target=run_async_task)
         thread.daemon = True
         thread.start()
 
+
 class PropertyGame(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
+
         self.db = PropertyDatabase()
         self.properties = []
         self.current_property = None
@@ -165,138 +160,128 @@ class PropertyGame(Screen):
         self.score = 0
         self.guesses_remaining = 5
         self.revealed_info = []
-        
+
         # Main layout
-        main_layout = BoxLayout(orientation='horizontal')
-        
+        main_layout = BoxLayout(orientation="horizontal")
+
         # Left side (images and controls)
-        left_side = BoxLayout(orientation='vertical', size_hint_x=0.7)
-        
+        left_side = BoxLayout(orientation="vertical", size_hint_x=0.7)
+
         # Top controls
         top_controls = BoxLayout(size_hint_y=0.1)
-        self.remaining_label = Label(
-            text='Properties remaining: 0',
-            size_hint_x=0.25
-        )
-        self.score_label = Label(
-            text=f'Score: {self.score}',
-            size_hint_x=0.25
-        )
+        self.remaining_label = Label(text="Properties remaining: 0", size_hint_x=0.25)
+        self.score_label = Label(text=f"Score: {self.score}", size_hint_x=0.25)
         self.random_btn = Button(
-            text='Next Property',
+            text="Next Property",
             size_hint_x=0.25,
             on_press=self.load_random_property,
-            disabled=True
+            disabled=True,
         )
         self.menu_btn = Button(
-            text='Main Menu',
-            size_hint_x=0.25,
-            on_press=self.return_to_menu
+            text="Main Menu", size_hint_x=0.25, on_press=self.return_to_menu
         )
         top_controls.add_widget(self.remaining_label)
         top_controls.add_widget(self.score_label)
         top_controls.add_widget(self.random_btn)
         top_controls.add_widget(self.menu_btn)
         left_side.add_widget(top_controls)
-        
+
         # Image display area
-        image_area = BoxLayout(orientation='vertical')
+        image_area = BoxLayout(orientation="vertical")
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
         image_area.add_widget(self.image_widget)
-        
+
         # Navigation buttons
         nav_buttons = BoxLayout(size_hint_y=0.1, spacing=10, padding=10)
         self.prev_button = Button(
-            text='←',
-            on_press=lambda x: self.change_image('left'),
-            size_hint_x=0.5
+            text="←", on_press=lambda x: self.change_image("left"), size_hint_x=0.5
         )
         self.next_button = Button(
-            text='→',
-            on_press=lambda x: self.change_image('right'),
-            size_hint_x=0.5
+            text="→", on_press=lambda x: self.change_image("right"), size_hint_x=0.5
         )
         nav_buttons.add_widget(self.prev_button)
         nav_buttons.add_widget(self.next_button)
         image_area.add_widget(nav_buttons)
-        
-        self.image_counter = Label(text='', size_hint_y=0.1)
+
+        self.image_counter = Label(text="", size_hint_y=0.1)
         image_area.add_widget(self.image_counter)
         left_side.add_widget(image_area)
-        
+
         # Guesses remaining label
         self.guesses_label = Label(
-            text=f'Guesses remaining: {self.guesses_remaining}',
-            size_hint_y=0.1
+            text=f"Guesses remaining: {self.guesses_remaining}", size_hint_y=0.1
         )
         left_side.add_widget(self.guesses_label)
-        
+
         # Price guess controls
         guess_controls = BoxLayout(size_hint_y=0.1)
         self.price_input = TextInput(
             multiline=False,
             size_hint_x=0.7,
-            hint_text='Enter price guess (e.g. 250000)'
+            hint_text="Enter price guess (e.g. 250000)",
         )
         self.submit_btn = Button(
-            text='Submit Guess',
+            text="Submit Guess",
             size_hint_x=0.3,
             on_press=self.check_guess,
-            disabled=True
+            disabled=True,
         )
         guess_controls.add_widget(self.price_input)
         guess_controls.add_widget(self.submit_btn)
         left_side.add_widget(guess_controls)
-        
+
         # Result label
-        self.result_label = Label(text='', size_hint_y=0.1)
+        self.result_label = Label(text="", size_hint_y=0.1)
         left_side.add_widget(self.result_label)
-        
+
         main_layout.add_widget(left_side)
-        
+
         # Right side (property info)
-        info_panel = BoxLayout(orientation='vertical', size_hint_x=0.3, padding=10)
-        info_panel.add_widget(Label(text='Property Information', size_hint_y=0.1))
-        
+        info_panel = BoxLayout(orientation="vertical", size_hint_x=0.3, padding=10)
+        info_panel.add_widget(Label(text="Property Information", size_hint_y=0.1))
+
         # Scrollable info area
         scroll_view = ScrollView(size_hint_y=0.9)
         self.info_label = Label(
-            text='',
+            text="",
             size_hint_y=None,
             markup=True,
-            halign='left',
-            valign='top',
-            padding=(10, 10)
+            halign="left",
+            valign="top",
+            padding=(10, 10),
         )
-        
+
         def update_text_width(instance, value):
             self.info_label.text_size = (value * 0.9, None)
-        
+
         scroll_view.bind(width=update_text_width)
-        self.info_label.bind(texture_size=self.info_label.setter('size'))
+        self.info_label.bind(texture_size=self.info_label.setter("size"))
         scroll_view.add_widget(self.info_label)
         info_panel.add_widget(scroll_view)
-        
+
         main_layout.add_widget(info_panel)
-        
+
         self.add_widget(main_layout)
-        
+
         # Keyboard binding
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_key_down)
-    
+
     def change_image(self, direction):
         """Handle image navigation"""
         if not self.current_property:
             return
-        
-        if direction == 'left' and self.current_image_index > 0:
+
+        if direction == "left" and self.current_image_index > 0:
             self.current_image_index -= 1
             self.update_display()
-        elif direction == 'right' and self.current_image_index < len(self.current_images) - 1:
+        elif (
+            direction == "right"
+            and self.current_image_index < len(self.current_images) - 1
+        ):
             self.current_image_index += 1
             self.update_display()
-    
+
     def load_properties(self):
         """Load properties from database"""
         property_data = self.db.get_random_unused_properties(10)
@@ -305,52 +290,54 @@ class PropertyGame(Screen):
             self.db.reset_used_status()
             # Try to get properties again
             property_data = self.db.get_random_unused_properties(10)
-        
+
         self.properties = property_data
-        self.remaining_label.text = f'Properties remaining: {len(self.properties)}'
+        self.remaining_label.text = f"Properties remaining: {len(self.properties)}"
         if self.properties:
             self.random_btn.disabled = False
             self.submit_btn.disabled = False
             self.load_random_property(None)
         else:
-            self.result_label.text = 'No more properties available!'
+            self.result_label.text = "No more properties available!"
             Clock.schedule_once(lambda dt: self.return_to_menu(), 2)
-    
+
     def return_to_menu(self, *args):
-        self.manager.current = 'menu'
-    
+        self.manager.current = "menu"
+
     def get_initial_info(self):
         """Return the initial property information to show"""
         return [
             f"[b]Location:[/b] {self.current_property['address']['displayAddress']}",
-            f"[b]Property Type:[/b] {self.current_property['property_type']}"
+            f"[b]Property Type:[/b] {self.current_property['property_type']}",
         ]
-    
+
     def get_progressive_info(self):
         """Return information to reveal progressively with each guess"""
+
         def get_size_info():
-            for s in self.current_property.get('sizings', []):
-                if s.get('unit') == 'sqm':
+            for s in self.current_property.get("sizings", []):
+                if s.get("unit") == "sqm":
                     return f"{s.get('max')} {s.get('unit')}"
-            return 'Not specified'
-        
+            return "Not specified"
+
         info_stages = [
             [f"[b]Bedrooms:[/b] {self.current_property['bedrooms']}"],
             [f"[b]Bathrooms:[/b] {self.current_property['bathrooms']}"],
             [f"[b]Size:[/b] {get_size_info()}"],
-            [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property.get('features', [])]
+            [f"[b]Key Features:[/b]"]
+            + [f"• {feature}" for feature in self.current_property.get("features", [])],
         ]
 
         return info_stages
-    
+
     def update_info_panel(self):
         """Update the information panel with current revealed info"""
         if not self.current_property:
             return
-        
-        info_text = '\n\n'.join(self.revealed_info)
+
+        info_text = "\n\n".join(self.revealed_info)
         self.info_label.text = info_text
-    
+
     def load_random_property(self, instance):
         if self.properties:
             self.current_property, images, plot = self.properties.pop(0)
@@ -359,109 +346,124 @@ class PropertyGame(Screen):
             if plot:
                 self.current_images.append(plot)
             self.current_images.extend(images)
-            
+
             self.current_image_index = 0
-            self.price_input.text = ''
-            self.result_label.text = ''
+            self.price_input.text = ""
+            self.result_label.text = ""
             self.guesses_remaining = 5
-            self.guesses_label.text = f'Guesses remaining: {self.guesses_remaining}'
-            self.remaining_label.text = f'Properties remaining: {len(self.properties)}'
-            
+            self.guesses_label.text = f"Guesses remaining: {self.guesses_remaining}"
+            self.remaining_label.text = f"Properties remaining: {len(self.properties)}"
+
             # Reset and show initial information
             self.revealed_info = self.get_initial_info()
             self.update_info_panel()
             self.update_display()
-    
+
     def update_display(self):
         if not self.current_property:
             return
-        
+
         # Update property image
-        if self.current_images and 0 <= self.current_image_index < len(self.current_images):
+        if self.current_images and 0 <= self.current_image_index < len(
+            self.current_images
+        ):
             image_data = self.current_images[self.current_image_index]
-            image = CoreImage(io.BytesIO(image_data), ext='png' if self.current_image_index == 0 else 'jpg')
+            image = CoreImage(
+                io.BytesIO(image_data),
+                ext="png" if self.current_image_index == 0 else "jpg",
+            )
             self.image_widget.texture = image.texture
-            self.image_counter.text = f'Image {self.current_image_index + 1}/{len(self.current_images)}'
-            
+            self.image_counter.text = (
+                f"Image {self.current_image_index + 1}/{len(self.current_images)}"
+            )
+
             # Update navigation button states
             self.prev_button.disabled = self.current_image_index == 0
-            self.next_button.disabled = self.current_image_index >= len(self.current_images) - 1
-    
+            self.next_button.disabled = (
+                self.current_image_index >= len(self.current_images) - 1
+            )
+
     def check_guess(self, instance):
         if not self.current_property or self.guesses_remaining <= 0:
             return
-        
+
         try:
             guess = float(self.price_input.text)
-            actual_price = float(self.current_property['price'].replace('£', '').replace(',', ''))
-            
+            actual_price = float(
+                self.current_property["price"].replace("£", "").replace(",", "")
+            )
+
             difference = abs(guess - actual_price) / actual_price * 100
-            
+
             # Reveal more information
             info_stages = self.get_progressive_info()
             stage_index = 5 - self.guesses_remaining
             if stage_index < len(info_stages):
                 self.revealed_info.extend(info_stages[stage_index])
                 self.update_info_panel()
-            
+
             self.guesses_remaining -= 1
-            self.guesses_label.text = f'Guesses remaining: {self.guesses_remaining}'
-            
+            self.guesses_label.text = f"Guesses remaining: {self.guesses_remaining}"
+
             if difference <= 5:
                 points = self.guesses_remaining + 1
                 self.score += points
-                self.score_label.text = f'Score: {self.score}'
-                self.result_label.text = f'Correct! You got {points} points! Actual price: £{actual_price:,.0f}'
+                self.score_label.text = f"Score: {self.score}"
+                self.result_label.text = f"Correct! You got {points} points! Actual price: £{actual_price:,.0f}"
                 if not self.properties:
                     Clock.schedule_once(lambda dt: self.return_to_menu(), 2)
             else:
                 feedback = "Too high!" if guess > actual_price else "Too low!"
                 if abs(guess - actual_price) > actual_price:
                     feedback += " (More than 2x different!)"
-                
+
                 if self.guesses_remaining > 0:
-                    self.result_label.text = f'{feedback} Try again!'
+                    self.result_label.text = f"{feedback} Try again!"
                 else:
-                    self.result_label.text = f'Game over! The actual price was £{actual_price:,.0f}'
+                    self.result_label.text = (
+                        f"Game over! The actual price was £{actual_price:,.0f}"
+                    )
                     if not self.properties:
                         Clock.schedule_once(lambda dt: self.return_to_menu(), 2)
-        
+
         except ValueError:
-            self.result_label.text = 'Please enter a valid number'
-    
+            self.result_label.text = "Please enter a valid number"
+
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         if not self.current_property:
             return True
-        
-        if keycode[1] == 'left':
-            self.change_image('left')
-        elif keycode[1] == 'right':
-            self.change_image('right')
+
+        if keycode[1] == "left":
+            self.change_image("left")
+        elif keycode[1] == "right":
+            self.change_image("right")
         return True
-    
+
     def _on_keyboard_closed(self):
         self._keyboard.unbind(on_key_down=self._on_key_down)
         self._keyboard = None
+
 
 class PropertyGameApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running = True
-    
+
     def build(self):
         sm = ScreenManager()
-        sm.add_widget(MenuScreen(name='menu'))
-        sm.add_widget(LoadingScreen(name='loading'))
-        sm.add_widget(PropertyGame(name='game'))
+        sm.add_widget(MenuScreen(name="menu"))
+        sm.add_widget(LoadingScreen(name="loading"))
+        sm.add_widget(PropertyGame(name="game"))
         return sm
-    
+
     def stop(self, *largs):
         self._running = False
         return super(PropertyGameApp, self).stop(*largs)
-    
+
     def on_stop(self):
         self._running = False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app = PropertyGameApp()
     app.run()

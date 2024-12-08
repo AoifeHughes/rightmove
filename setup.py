@@ -1,16 +1,14 @@
 from setuptools import setup
 
 setup(
-    name='PropertyPriceApp',
-    version='1.0',
-    packages=['propertypriceapp'],
+    name="PropertyPriceApp",
+    version="1.0",
+    packages=["propertypriceapp"],
     install_requires=[
-        'kivy',
-        'httpx',
-        'jmespath',
-        'parsel',
-        'geopandas',
-        'matplotlib',
-        'shapely'
-    ]
+        "kivy",
+        "httpx",
+        "jmespath",
+        "parsel",
+        "matplotlib",
+    ],
 )

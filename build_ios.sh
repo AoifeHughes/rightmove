@@ -1,17 +1,15 @@
 #!/bin/bash
-
-# Exit on error
 set -e
 
-echo "Setting up build environment for iOS..."
+# Install kivy-ios if not already installed
+# pip install kivy-ios
 
-# Set up environment
-toolchain build python3 kivy
-toolchain build hostpython3
-toolchain build ios
-toolchain build sqlite3
+# Build dependencies
+toolchain build kivy
+toolchain build python3
 toolchain build matplotlib
 
-# Build the app
+# Create and build project
 toolchain create PropertyPriceApp ~/git/rightmove
-open PropertyPriceApp/ios/build/PropertyPriceApp.xcodeproj
+cd PropertyPriceApp
+toolchain build ios

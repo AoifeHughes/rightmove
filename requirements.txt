@@ -1,0 +1,15 @@
+kivy>=2.1.0
+httpx>=0.24.0
+jmespath>=1.0.1
+parsel>=1.8.1
+matplotlib>=3.7.1
+asyncio>=3.4.3
+typing-extensions>=4.5.0
+
+# Development dependencies
+pre-commit>=3.3.2
+black>=23.3.0
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+isort>=5.12.0
+mypy>=1.3.0
