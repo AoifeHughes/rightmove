@@ -87,14 +87,16 @@ def find_json_objects(text: str, decoder=json.JSONDecoder()):
 
 
 import json
-from bs4 import BeautifulSoup
 import re
+
+from bs4 import BeautifulSoup
+
 
 def find_json_objects(text):
     """Find JSON objects in text using regex"""
     pos = 0
     while True:
-        match = re.search(r'{', text[pos:])
+        match = re.search(r"{", text[pos:])
         if not match:
             return
 
@@ -103,13 +105,13 @@ def find_json_objects(text):
         pos = start + 1
 
         for i, char in enumerate(text[pos:], pos):
-            if char == '{':
+            if char == "{":
                 stack += 1
-            elif char == '}':
+            elif char == "}":
                 stack -= 1
                 if stack == 0:
                     try:
-                        obj = json.loads(text[start:i + 1])
+                        obj = json.loads(text[start : i + 1])
                         yield obj
                         pos = i + 1
                         break
@@ -119,21 +121,21 @@ def find_json_objects(text):
         else:
             return
 
+
 def extract_property(response_text: str) -> dict:
     """Extract property data from rightmove PAGE_MODEL javascript variable"""
-    soup = BeautifulSoup(response_text, 'html.parser')
-    
+    soup = BeautifulSoup(response_text, "html.parser")
+
     # Find script tag containing PAGE_MODEL
-    script = soup.find('script', string=re.compile('PAGE_MODEL = '))
-    
+    script = soup.find("script", string=re.compile("PAGE_MODEL = "))
+
     if not script:
         print("Not a property listing page")
         return
-    
+
     # Extract JSON data
     json_data = list(find_json_objects(script.string))[0]
     return json_data["propertyData"]
-
 
 
 def parse_property(data) -> PropertyResult:

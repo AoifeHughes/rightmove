@@ -13,3 +13,5 @@ dist/
 *.spec
 *.log
 propertypriceapp-ios/
+*.__pycache__
+*.pyc
