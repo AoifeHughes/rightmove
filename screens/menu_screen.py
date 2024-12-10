@@ -1,13 +1,15 @@
 import asyncio
 import threading
+
+from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
-from kivy.clock import Clock
 
-from database import PropertyDatabase
 from data_getter import generate_random_properties
+from database import PropertyDatabase
+
 
 class MenuScreen(Screen):
     def __init__(self, **kwargs):
@@ -25,13 +27,11 @@ class MenuScreen(Screen):
         # Buttons
         self.start_button = Button(
             text="Start",
-
         )
         self.start_button.bind(on_press=self.start_game)
 
         generate_button = Button(
             text="Generate new data",
-
         )
         generate_button.bind(on_press=self.generate_data)
 

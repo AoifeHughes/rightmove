@@ -14,4 +14,4 @@ dist/
 *.log
 propertypriceapp-ios/
 *.__pycache__
-*.pyc 
+*.pyc

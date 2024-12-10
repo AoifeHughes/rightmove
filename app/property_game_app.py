@@ -5,13 +5,14 @@ from screens.loading_screen import LoadingScreen
 from screens.menu_screen import MenuScreen
 from screens.property_game import PropertyGame
 
+
 class PropertyGameApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running = True
 
     def build(self):
-        self.icon = 'logo.png'
+        self.icon = "logo.png"
         sm = ScreenManager()
         sm.add_widget(MenuScreen(name="menu"))
         sm.add_widget(LoadingScreen(name="loading"))

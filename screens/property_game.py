@@ -1,4 +1,6 @@
 import io
+
+from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
@@ -8,9 +10,9 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
-from kivy.clock import Clock
 
 from database import PropertyDatabase
+
 
 class PropertyGame(Screen):
     def __init__(self, **kwargs):
@@ -28,11 +30,10 @@ class PropertyGame(Screen):
         # Initialize UI components
         self.setup_ui()
 
-
     def setup_ui(self):
         """Create and organize all UI elements"""
         main_layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
-        
+
         # Top row with score and remaining properties
         top_row = BoxLayout(size_hint_y=0.1)
         self.remaining_label = Label(text="Properties remaining: 0", size_hint_x=0.5)
@@ -41,12 +42,11 @@ class PropertyGame(Screen):
         top_row.add_widget(self.score_label)
         main_layout.add_widget(top_row)
 
-
         # Guess controls at the bottom
         guess_section = BoxLayout(orientation="vertical", size_hint_y=0.1, spacing=5)
         self.guesses_label = Label(text=f"Guesses remaining: {self.guesses_remaining}")
         guess_section.add_widget(self.guesses_label)
-        
+
         guess_input_row = BoxLayout(spacing=5)
         self.price_input = TextInput(
             multiline=False,
@@ -63,11 +63,10 @@ class PropertyGame(Screen):
         guess_input_row.add_widget(self.price_input)
         guess_input_row.add_widget(self.submit_btn)
         guess_section.add_widget(guess_input_row)
-        
+
         self.result_label = Label(text="")
         guess_section.add_widget(self.result_label)
         main_layout.add_widget(guess_section)
-
 
         # Button row with Next Property and Main Menu
         button_row = BoxLayout(size_hint_y=0.1)
@@ -78,33 +77,26 @@ class PropertyGame(Screen):
             disabled=True,
         )
         self.menu_btn = Button(
-            text="Main Menu",
-            size_hint_x=0.5,
-            on_press=self.return_to_menu
+            text="Main Menu", size_hint_x=0.5, on_press=self.return_to_menu
         )
-
 
         # Image gallery
         image_area = BoxLayout(orientation="vertical", size_hint_y=0.4)
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
         image_area.add_widget(self.image_widget)
-        
+
         # Navigation controls
         nav_buttons = BoxLayout(size_hint_y=0.2, spacing=10)
         self.prev_button = Button(
-            text="<",
-            on_press=lambda x: self.change_image("left"),
-            size_hint_x=0.5
+            text="<", on_press=lambda x: self.change_image("left"), size_hint_x=0.5
         )
         self.next_button = Button(
-            text=">",
-            on_press=lambda x: self.change_image("right"),
-            size_hint_x=0.5
+            text=">", on_press=lambda x: self.change_image("right"), size_hint_x=0.5
         )
         nav_buttons.add_widget(self.prev_button)
         nav_buttons.add_widget(self.next_button)
         image_area.add_widget(nav_buttons)
-        
+
         # Image counter
         self.image_counter = Label(text="", size_hint_y=0.1)
         image_area.add_widget(self.image_counter)
@@ -122,15 +114,15 @@ class PropertyGame(Screen):
             valign="top",
             padding=(10, 10),
         )
+
         def update_text_width(instance, value):
             self.info_label.text_size = (value * 0.9, None)
+
         scroll_view.bind(width=update_text_width)
         self.info_label.bind(texture_size=self.info_label.setter("size"))
         scroll_view.add_widget(self.info_label)
         info_panel.add_widget(scroll_view)
         main_layout.add_widget(info_panel)
-
-
 
         button_row.add_widget(self.random_btn)
         button_row.add_widget(self.menu_btn)
@@ -146,7 +138,10 @@ class PropertyGame(Screen):
         if direction == "left" and self.current_image_index > 0:
             self.current_image_index -= 1
             self.update_display()
-        elif direction == "right" and self.current_image_index < len(self.current_images) - 1:
+        elif (
+            direction == "right"
+            and self.current_image_index < len(self.current_images) - 1
+        ):
             self.current_image_index += 1
             self.update_display()
 
@@ -181,6 +176,7 @@ class PropertyGame(Screen):
 
     def get_progressive_info(self):
         """Return information to reveal progressively with each guess"""
+
         def get_size_info():
             for s in self.current_property.get("sizings", []):
                 if s.get("unit") == "sqm":
@@ -191,7 +187,8 @@ class PropertyGame(Screen):
             [f"[b]Bedrooms:[/b] {self.current_property['bedrooms']}"],
             [f"[b]Bathrooms:[/b] {self.current_property['bathrooms']}"],
             [f"[b]Size:[/b] {get_size_info()}"],
-            [f"[b]Key Features:[/b]"] + [f"• {feature}" for feature in self.current_property.get("features", [])],
+            [f"[b]Key Features:[/b]"]
+            + [f"• {feature}" for feature in self.current_property.get("features", [])],
         ]
 
         return info_stages
@@ -230,18 +227,24 @@ class PropertyGame(Screen):
             return
 
         # Update property image
-        if self.current_images and 0 <= self.current_image_index < len(self.current_images):
+        if self.current_images and 0 <= self.current_image_index < len(
+            self.current_images
+        ):
             image_data = self.current_images[self.current_image_index]
             image = CoreImage(
                 io.BytesIO(image_data),
                 ext="png" if self.current_image_index == 0 else "jpg",
             )
             self.image_widget.texture = image.texture
-            self.image_counter.text = f"Image {self.current_image_index + 1}/{len(self.current_images)}"
+            self.image_counter.text = (
+                f"Image {self.current_image_index + 1}/{len(self.current_images)}"
+            )
 
             # Update navigation button states
             self.prev_button.disabled = self.current_image_index == 0
-            self.next_button.disabled = self.current_image_index >= len(self.current_images) - 1
+            self.next_button.disabled = (
+                self.current_image_index >= len(self.current_images) - 1
+            )
 
     def check_guess(self, instance):
         if not self.current_property or self.guesses_remaining <= 0:
@@ -249,7 +252,9 @@ class PropertyGame(Screen):
 
         try:
             guess = float(self.price_input.text)
-            actual_price = float(self.current_property["price"].replace("£", "").replace(",", ""))
+            actual_price = float(
+                self.current_property["price"].replace("£", "").replace(",", "")
+            )
 
             difference = abs(guess - actual_price) / actual_price * 100
 
@@ -278,7 +283,9 @@ class PropertyGame(Screen):
                 if self.guesses_remaining > 0:
                     self.result_label.text = f"{feedback} Try again!"
                 else:
-                    self.result_label.text = f"Game over! The actual price was £{actual_price:,.0f}"
+                    self.result_label.text = (
+                        f"Game over! The actual price was £{actual_price:,.0f}"
+                    )
                     if not self.properties:
                         Clock.schedule_once(lambda dt: self.return_to_menu(), 2)
 
