@@ -1,6 +1,6 @@
 import os
 from kivy.app import App
-from kivy_app import PropertyGameApp
+from app.property_game_app import PropertyGameApp
 
 if __name__ == "__main__":
     if os.environ.get("KIVY_BUILD") == "ios":        
