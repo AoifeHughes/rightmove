@@ -1,7 +1,6 @@
 kivy>=2.1.0
 httpx>=0.24.0
 jmespath>=1.0.1
-parsel>=1.8.1
 matplotlib>=3.7.1
 asyncio>=3.4.3
 typing-extensions>=4.5.0

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 class PropertyDatabase:
     def __init__(self, db_path=None):
         if db_path is None:
-            documents_dir = os.path.expanduser("~/Documents")
+            documents_dir = os.environ['HOME']
             db_path = os.path.join(documents_dir, "properties.db")
         self.db_path = db_path
         self.init_db()
