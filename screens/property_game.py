@@ -28,63 +28,69 @@ class PropertyGame(Screen):
         # Initialize UI components
         self.setup_ui()
 
-        # Keyboard binding
-        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_key_down)
 
     def setup_ui(self):
         """Create and organize all UI elements"""
-        main_layout = BoxLayout(orientation="horizontal")
-        main_layout.add_widget(self.create_left_panel())
-        main_layout.add_widget(self.create_right_panel())
-        self.add_widget(main_layout)
+        main_layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+        
+        # Top row with score and remaining properties
+        top_row = BoxLayout(size_hint_y=0.1)
+        self.remaining_label = Label(text="Properties remaining: 0", size_hint_x=0.5)
+        self.score_label = Label(text=f"Score: {self.score}", size_hint_x=0.5)
+        top_row.add_widget(self.remaining_label)
+        top_row.add_widget(self.score_label)
+        main_layout.add_widget(top_row)
 
-    def create_left_panel(self):
-        """Create the left panel containing images and controls"""
-        left_panel = BoxLayout(orientation="vertical", size_hint_x=0.7)
-        
-        # Add components to left panel
-        left_panel.add_widget(self.create_top_controls())
-        left_panel.add_widget(self.create_image_area())
-        left_panel.add_widget(self.create_guess_controls())
-        
-        return left_panel
 
-    def create_top_controls(self):
-        """Create the top control bar"""
-        top_controls = BoxLayout(size_hint_y=0.1)
+        # Guess controls at the bottom
+        guess_section = BoxLayout(orientation="vertical", size_hint_y=0.1, spacing=5)
+        self.guesses_label = Label(text=f"Guesses remaining: {self.guesses_remaining}")
+        guess_section.add_widget(self.guesses_label)
         
-        self.remaining_label = Label(text="Properties remaining: 0", size_hint_x=0.25)
-        self.score_label = Label(text=f"Score: {self.score}", size_hint_x=0.25)
+        guess_input_row = BoxLayout(spacing=5)
+        self.price_input = TextInput(
+            multiline=False,
+            size_hint_x=0.7,
+            hint_text="Enter price guess (e.g. 250000)",
+            input_type="number",
+        )
+        self.submit_btn = Button(
+            text="Submit Guess",
+            size_hint_x=0.3,
+            on_press=self.check_guess,
+            disabled=True,
+        )
+        guess_input_row.add_widget(self.price_input)
+        guess_input_row.add_widget(self.submit_btn)
+        guess_section.add_widget(guess_input_row)
+        
+        self.result_label = Label(text="")
+        guess_section.add_widget(self.result_label)
+        main_layout.add_widget(guess_section)
+
+
+        # Button row with Next Property and Main Menu
+        button_row = BoxLayout(size_hint_y=0.1)
         self.random_btn = Button(
             text="Next Property",
-            size_hint_x=0.25,
+            size_hint_x=0.5,
             on_press=self.load_random_property,
             disabled=True,
         )
         self.menu_btn = Button(
             text="Main Menu",
-            size_hint_x=0.25,
+            size_hint_x=0.5,
             on_press=self.return_to_menu
         )
-        
-        top_controls.add_widget(self.remaining_label)
-        top_controls.add_widget(self.score_label)
-        top_controls.add_widget(self.random_btn)
-        top_controls.add_widget(self.menu_btn)
-        
-        return top_controls
 
-    def create_image_area(self):
-        """Create the image display area with navigation"""
-        image_area = BoxLayout(orientation="vertical")
-        
-        # Main image display
+
+        # Image gallery
+        image_area = BoxLayout(orientation="vertical", size_hint_y=0.4)
         self.image_widget = Image(allow_stretch=True, keep_ratio=True)
         image_area.add_widget(self.image_widget)
         
         # Navigation controls
-        nav_buttons = BoxLayout(size_hint_y=0.1, spacing=10, padding=10)
+        nav_buttons = BoxLayout(size_hint_y=0.2, spacing=10)
         self.prev_button = Button(
             text="<",
             on_press=lambda x: self.change_image("left"),
@@ -102,53 +108,12 @@ class PropertyGame(Screen):
         # Image counter
         self.image_counter = Label(text="", size_hint_y=0.1)
         image_area.add_widget(self.image_counter)
-        
-        return image_area
+        main_layout.add_widget(image_area)
 
-    def create_guess_controls(self):
-        """Create the guessing controls section"""
-        guess_section = BoxLayout(orientation="vertical", size_hint_y=0.3)
-        
-        # Guesses remaining label
-        self.guesses_label = Label(
-            text=f"Guesses remaining: {self.guesses_remaining}",
-            size_hint_y=0.33
-        )
-        guess_section.add_widget(self.guesses_label)
-        
-        # Price input controls
-        guess_controls = BoxLayout(size_hint_y=0.33)
-        self.price_input = TextInput(
-            multiline=False,
-            size_hint_x=0.7,
-            hint_text="Enter price guess (e.g. 250000)",
-            input_type="number",
-        )
-        self.submit_btn = Button(
-            text="Submit Guess",
-            size_hint_x=0.3,
-            on_press=self.check_guess,
-            disabled=True,
-        )
-        guess_controls.add_widget(self.price_input)
-        guess_controls.add_widget(self.submit_btn)
-        guess_section.add_widget(guess_controls)
-        
-        # Result label
-        self.result_label = Label(text="", size_hint_y=0.33)
-        guess_section.add_widget(self.result_label)
-        
-        return guess_section
-
-    def create_right_panel(self):
-        """Create the right panel containing property information"""
-        info_panel = BoxLayout(orientation="vertical", size_hint_x=0.3, padding=10)
-        
-        # Header
+        # Information panel
+        info_panel = BoxLayout(orientation="vertical", size_hint_y=0.3)
         info_panel.add_widget(Label(text="Property Information", size_hint_y=0.1))
-        
-        # Scrollable info area
-        scroll_view = ScrollView(size_hint_y=0.9)
+        scroll_view = ScrollView()
         self.info_label = Label(
             text="",
             size_hint_y=None,
@@ -157,16 +122,21 @@ class PropertyGame(Screen):
             valign="top",
             padding=(10, 10),
         )
-        
         def update_text_width(instance, value):
             self.info_label.text_size = (value * 0.9, None)
-            
         scroll_view.bind(width=update_text_width)
         self.info_label.bind(texture_size=self.info_label.setter("size"))
         scroll_view.add_widget(self.info_label)
         info_panel.add_widget(scroll_view)
-        
-        return info_panel
+        main_layout.add_widget(info_panel)
+
+
+
+        button_row.add_widget(self.random_btn)
+        button_row.add_widget(self.menu_btn)
+        main_layout.add_widget(button_row)
+
+        self.add_widget(main_layout)
 
     def change_image(self, direction):
         """Handle image navigation"""

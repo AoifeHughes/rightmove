@@ -25,17 +25,13 @@ class MenuScreen(Screen):
         # Buttons
         self.start_button = Button(
             text="Start",
-            size_hint=(None, None),
-            size=(200, 50),
-            pos_hint={"center_x": 0.5},
+
         )
         self.start_button.bind(on_press=self.start_game)
 
         generate_button = Button(
             text="Generate new data",
-            size_hint=(None, None),
-            size=(200, 50),
-            pos_hint={"center_x": 0.5},
+
         )
         generate_button.bind(on_press=self.generate_data)
 

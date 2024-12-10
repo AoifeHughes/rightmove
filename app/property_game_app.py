@@ -11,6 +11,7 @@ class PropertyGameApp(App):
         self._running = True
 
     def build(self):
+        self.icon = 'logo.png'
         sm = ScreenManager()
         sm.add_widget(MenuScreen(name="menu"))
         sm.add_widget(LoadingScreen(name="loading"))
